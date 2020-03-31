@@ -25,35 +25,52 @@ fclose(fid);
 ID       = C{1}(:,1); 
 
 
-% example correlation
+% get subibuculum(hippocampus)-to-cortex(glasser) connectivity
 
-i = 1;          % ID{1}    : 'HCP_100610'
-j = 1;          % scans{1} : 'rfMRI_REST1_LR'
-m = 1;          % roi{1}   : 'L_SUB'
+roi_sub = {'L_SUB', 'R_SUB'};
 
+glasservertexnum = 360; 
+SUM_CORR         = zeros(glasservertexnum, 1) ; 
+totnum           = 0;
 
-subj_glass_file = strcat(glassdir, ID{i}, '_glasserTimeseries.mat');
-subj_hipp_file  = strcat(hippdir, ID{i}, '_smoothTimeseries.mat');
+for i = 1:length(ID)
+    for j = 1:length(scans)
+        for m = 1:length(roi_sub)
 
-subj_glass  = load(subj_glass_file).(scans{j});         % (1200 x 360)
+            % files
+            subj_glass_file = strcat(glassdir, ID{i}, '_glasserTimeseries.mat');
+            subj_hipp_file  = strcat(hippdir, ID{i}, '_smoothTimeseries.mat');
 
-subj_hipp   = load(subj_hipp_file).(scans{j}).(roi{m}); % (1200 x 1024)
-subj_hippav = mean(subj_hipp, 2);                       % (1200 x 1)
+            % arrays
+            subj_glass  = load(subj_glass_file).(scans{j});         % (1200 x 360)
+            subj_hipp   = load(subj_hipp_file).(scans{j}).(roi_sub{m}); % (1200 x 1024)
+            subj_hippav = mean(subj_hipp, 2);                       % (1200 x 1)
+            subj_corr   = corr(subj_glass, subj_hippav);            % (360 x 1)
 
+            fprintf('%s %s %s maxcorr  %.2f \n', ...
+                    ID{i},  roi_sub{m}, scans{j}, max(subj_corr));
 
-subj_corr = corr(subj_glass, subj_hippav);              % (360 x 1)
+            SUM_CORR = SUM_CORR + subj_corr ; 
+            totnum   = totnum + 1;
 
-% plotting (install git repos first)
+        end
+    end
+end
+
+SUM_CORR = SUM_CORR / totnum;
+
+% plotting... (install github repo's BrainSpace and gifti-master)
 
 addpath(genpath('/data/p_02323/hippoc/BrainSpace/matlab')) % plotting tool
 addpath(genpath('/data/p_02323/hippoc/gifti-master/'))     % gifti tool
 
-labeling_glasser= load(fullfile(ddir, 'glasser.csv'));  % 64k labeling
+labeling_glasser= load(fullfile(ddir, 'glasser.csv'));     % 64k labeling
 
 [surf_lh, surf_rh] = load_conte69();    % 32k left & 32k right fsaverage
 
-fig01 = figure;
-plot_hemispheres(subj_corr, {surf_lh,surf_rh}, ...
-                'parcellation', labeling_glasser);
-colormap('hot')
+% here we go
 
+fig01 = figure;
+plot_hemispheres(SUM_CORR, {surf_lh,surf_rh}, ...
+                 'parcellation', labeling_glasser);
+colormap('hot')
