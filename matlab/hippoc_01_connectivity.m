@@ -24,13 +24,12 @@ C        = textscan(fid,'%s', 'CollectOutput',1);
 fclose(fid);
 ID       = C{1}(:,1); 
 
-
 % get subibuculum(hippocampus)-to-cortex(glasser) connectivity
 
 roi_sub = {'L_SUB', 'R_SUB'};
 
 glasservertexnum = 360; 
-SUM_CORR         = zeros(glasservertexnum, 1) ; 
+SUM_CORR         = zeros(glasservertexnum, 1); 
 totnum           = 0;
 
 for i = 1:length(ID)
@@ -42,15 +41,16 @@ for i = 1:length(ID)
             subj_hipp_file  = strcat(hippdir, ID{i}, '_smoothTimeseries.mat');
 
             % arrays
-            subj_glass  = load(subj_glass_file).(scans{j});         % (1200 x 360)
-            subj_hipp   = load(subj_hipp_file).(scans{j}).(roi_sub{m}); % (1200 x 1024)
-            subj_hippav = mean(subj_hipp, 2);                       % (1200 x 1)
-            subj_corr   = corr(subj_glass, subj_hippav);            % (360 x 1)
+            subj_glass  = load(subj_glass_file).(scans{j});              % (1200 x 360)
+            subj_hipp   = load(subj_hipp_file).(scans{j}).(roi_sub{m});  % (1200 x 1024)
+            subj_hippav = mean(subj_hipp, 2);                            % (1200 x 1)
+            subj_corr   = corr(subj_glass, subj_hippav);                 % (360 x 1)
 
             fprintf('%s %s %s maxcorr  %.2f \n', ...
                     ID{i},  roi_sub{m}, scans{j}, max(subj_corr));
 
-            SUM_CORR = SUM_CORR + subj_corr ; 
+            % Fisher RtoZ prior to averaging
+            SUM_CORR = SUM_CORR + atanh(subj_corr); 
             totnum   = totnum + 1;
 
         end
@@ -66,11 +66,15 @@ addpath(genpath('/data/p_02323/hippoc/gifti-master/'))     % gifti tool
 
 labeling_glasser= load(fullfile(ddir, 'glasser.csv'));     % 64k labeling
 
-[surf_lh, surf_rh] = load_conte69();    % 32k left & 32k right fsaverage
+[surf_lh, surf_rh] = load_conte69();      % 32k left & 32k right fsaverage
 
 % here we go
+obj = plot_hemispheres(SUM_CORR, {surf_lh,surf_rh}, ...
+                       'views','lmap', ...
+                       'labeltext', {'<SUBICULUM>'}, ...
+                       'parcellation', labeling_glasser);
 
-fig01 = figure;
-plot_hemispheres(SUM_CORR, {surf_lh,surf_rh}, ...
-                 'parcellation', labeling_glasser);
-colormap('hot')
+obj.colorlimits([0, 0.5]);
+obj.labels('FontSize',15)
+colormap(obj.handles.figure, hot)
+
