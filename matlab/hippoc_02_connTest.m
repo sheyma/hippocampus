@@ -18,18 +18,32 @@ BoSurfStatViewData(rand(length(D.coord),1), D, 'random brain')
 colormap('hot')
 
 %%%%% get subject-specific connectivity
-ddir     = '/data/p_02323/hippoc/data/';           
-glassdir = fullfile(ddir, 'glasserTimeseries/');    % cortex t-series
-hippdir  = fullfile(ddir, 'smoothTimeseries/');     % hippocampus t-series
-subjlist = fullfile(ddir, 'subjectListUR1QC.txt');  % 132 subjects
+ddir      = '/data/p_02323/hippoc/data/';           
+glassdir  = fullfile(ddir, 'glasserTimeseries/');    % cortex t-series
+hippdir   = fullfile(ddir, 'smoothTimeseries/');     % hippocampus t-series
+subjlist1 = fullfile(ddir, 'subjectListUR1QC.txt');  % 132 subjects
+subjlist2 = fullfile(ddir, 'subjectListMT1QC.txt');  % 85 subjects
 
-scans   = {'rfMRI_REST1_LR'};
+scans = {'rfMRI_REST1_LR', 'rfMRI_REST1_RL', ... 
+    'rfMRI_REST2_LR', 'rfMRI_REST2_RL'};
+
 roi_sub = {'L_SUB', 'R_SUB'};
 
-fid      = fopen(subjlist); 
+% get subject ID's as cell
+
+fid      = fopen(subjlist1); 
 txt      = textscan(fid,'%s', 'CollectOutput',1);  
 fclose(fid);
-ID       = txt{1}(:,1); 
+ID1      = txt{1}(:,1); 
+
+fid      = fopen(subjlist2); 
+txt      = textscan(fid,'%s', 'CollectOutput',1);  
+fclose(fid);
+ID2      = txt{1}(:,1); 
+
+ID = [ID1; ID2];
+
+% here we go...
 
 C360_all = zeros(length(ID), 360);
 
@@ -61,35 +75,55 @@ for i = 1:length(ID)
     C360_all(i,:) = k; 
 end
 
+C360_all = load('/data/p_02323/hippoc/hippocampus/matlab/avecorr_217.mat');
+C360_all = C360_all.C360_all; 
 
-%%%%% resample 360 -->> 64k for each subject & plot mean connectivity
+%%%% plot average connectivity across connectivity
 
-mylabel  = load(fullfile(ddir, 'glasser.csv'));     % 64k labeling
+C360_ave  = mean(C360_all,1);
+C360_surf = zeros(64984, 1);   
 
-C64k_all = zeros(length(ID), 64984);                
+mylabel   = load(fullfile(ddir, 'glasser.csv'));     % 64k labeling
 
-for i = 1:length(ID)
-    for j = 1:360
-       C64k_all(i, (find(mylabel == j))) = C360_all(i, j); 
-    end
+for i = 1:360    
+    C360_surf(mylabel == i) = C360_ave(i); 
 end
 
-BoSurfStatViewData(mean(C64k_all, 1), D, 'average connectivity')
+BoSurfStatViewData(C360_surf, D, 'average connectivity')
 BoSurfStatColLim([0 0.5])
 colormap('hot')
 
-%%%%% one-sample t-test across subjects
+%%%% one-sample t-test
 
-T        = C64k_all;                    
-subjID   = ID;
-contrast = ones(length(ID),1);
-M        = 1 + term(contrast); 
-slm      = SurfStatLinModS(T, M, D); 
-slm      = SurfStatT(slm, contrast);
+parcels  = C360_all;                % 217 x 360
+subjID   = ID;                      % 217 
+contrast = ones(length(subjID),1);  % 217 x 1
+M        = 1 + term(contrast);      % 217 x 1
 
-Tvals    = slm.t;
-Tvals(Tvals < 15) = Inf;                          % thresholding
-BoSurfStatViewData(Tvals, D, 't-values')
-BoSurfStatColLim([15 40])
+slm = SurfStatLinMod(parcels, M);
+slm = SurfStatT(slm, contrast);
+
+Tvals = slm.t;
+
+% multiple comparison correction: Benferroni
+pvals = 1-tcdf(slm.t, slm.df);
+pvals = pvals*size(pvals,2);
+
+Tsurf = zeros(64984, 1);   
+Psurf = zeros(64984, 1);  
+
+for i = 1:360    
+    Tsurf(mylabel == i) = Tvals(i); 
+    Psurf(mylabel == i) = pvals(i); 
+
+end
+
+Tsurf(Tsurf < 20) = Inf;                          % thresholding
+BoSurfStatViewData(Tsurf, D, 't-values')
+BoSurfStatColLim([20 70])
 colormap([hot; .7 .7 .7])
+                   
+BoSurfStatViewData(Psurf, D, 'p-values')
+BoSurfStatColLim([0 0.05])
+colormap([parula; .7 .7 .7])
 
