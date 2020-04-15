@@ -27,6 +27,9 @@ roi_sub   = {'L_SUB', 'L_CA', 'L_DG'};
 len       = [];
 
 % here we go
+H = zeros( length(ID) * length(scans), 4096, 360);
+loopno = 0;
+
 for i = 1:length(ID)
     subj_glass_file = strcat(glassdir, ID{i}, '_glasserTimeseries.mat');
     subj_hipp_file  = strcat(hippdir, ID{i}, '_smoothTimeseries.mat');
@@ -48,49 +51,41 @@ for i = 1:length(ID)
             end
         end
 
-        % get correlation & sum
+        % get correlation & append in H
         A = corr(subj_hall, subj_glass);    
-        if i == 1                                  % for the first subject
-            SUM_CORR = A;
-        else
-            SUM_CORR = SUM_CORR + A;
-        end
-        
-        fprintf('%s %s maxcorr  %.2f \n', ...
-                ID{i}, scans{j}, max(max(SUM_CORR))); 
+        loopno = loopno + 1;
+        H(loopno, :, :) = A; 
+        fprintf('%4.2f max %.2f \n ', loopno, max(max(A))); 
     end
 end
 
+Hmean = squeeze(mean(H));
+Hstd  = squeeze(std(H)); 
+Hstd(eye(size(Hstd))==1) = 0 ; 
 
-totnum = length(ID) * length(scans)
-SUM_CORR = SUM_CORR / totnum;
-
-save('/data/p_02323/hippoc/hippocampus/matlab/avecorr_allhipsubfields.mat', 'SUM_CORR' );
-
+save('/data/p_02323/hippoc/hippocampus/matlab/avecorr_allhipsubfields.mat', 'Hmean' );
+save('/data/p_02323/hippoc/hippocampus/matlab/avecorr_std_allhipsubfields.mat', 'Hstd' ); 
 
 % get gradients
 gm = GradientMaps();
-gm = gm.fit(SUM_CORR);
-B = gm.gradients{1}(:,1) ; 
+gm = gm.fit(Hmean);
+G1 = gm.gradients{1}(:,1) ; 
 
 % assign gradient separately 
 G = [];
-G.L_SUB = B(1:len.L_SUB, :);
-G.L_CA  = B(len.L_SUB + 1: len.L_SUB + len.L_CA );
-G.L_DG  = B(len.L_SUB + len.L_CA + 1: len.L_SUB + len.L_CA + len.L_DG);
+G.L_SUB = G1(1:len.L_SUB, :);
+G.L_CA  = G1(len.L_SUB + 1: len.L_SUB + len.L_CA );
+G.L_DG  = G1(len.L_SUB + len.L_CA + 1: len.L_SUB + len.L_CA + len.L_DG);
 
-
-a = load('/data/p_02323/hippoc/hippocampus/matlab/surf_lsub.mat');
-a = a.ave_lsub;
-
+% get surface data
+mysurf = load('/data/p_02323/hippoc/hippocampus/matlab/surf_lsub.mat');
+mysurf = mysurf.ave_lsub;
+x = (mysurf.coord(1,:))';
+y = (mysurf.coord(2,:))';
+z = -(mysurf.coord(3,:))'; 
 
 f = figure;
-K = a;
-x = (K.coord(1,:))';
-y = (K.coord(2,:))';
-z = -(K.coord(3,:))';
-h = trisurf(K.tri,x,y,z, G.L_SUB);
+h = trisurf(mysurf.tri, x,y,z, -1 * G.L_SUB);  % G might be flipped!
 set(h,'edgecolor','none')
 colorbar()
 caxis([-0.15, 0.15])
-
